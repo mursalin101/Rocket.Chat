@@ -1,0 +1,74 @@
+// === Frontend Prototype: React + Fuselage ===
+
+import React, { useState } from 'react';
+import { TextInput, Button, Box } from '@rocket.chat/fuselage'; 
+import Flatpickr from 'react-flatpickr';
+import 'flatpickr/dist/themes/material_green.css';
+
+const MessageScheduler = ({ onSchedule }) => { 
+const [message, setMessage] = useState(''); 
+const [dateTime, setDateTime] = useState(null);
+
+const handleSchedule = () => { 
+if (!message || !dateTime) return alert('Message and time are required.');
+onSchedule({ message, scheduledAt: dateTime }); };
+
+return ( 
+<Box display='flex' flexDirection='column' width='100%' maxWidth='400px' margin='auto' padding='x16'> <TextInput placeholder='Enter your message' value={message} onChange={(e) => setMessage(e.currentTarget.value)} /> 
+<Box margin='x8 0'> <Flatpickr data-enable-time placeholder='Select Date & Time' options={{ enableTime: true, dateFormat: "Y-m-d H:i" }} onChange={(dates) => setDateTime(dates[0])} />
+</Box>
+<Button primary onClick={handleSchedule}>Schedule Message</Button> 
+</Box> ); };
+
+export default MessageScheduler;
+
+// === Backend Prototype: Meteor Method Scheduler ===
+
+// server/methods/scheduleMessage.js
+import { Meteor } from 'meteor/meteor';
+import { check } from 'meteor/check'; 
+import { Messages } from '/imports/api/messages';
+
+Meteor.methods({ 'chat.scheduleMessage'(roomId, msg, scheduledAt) { 
+check(roomId, String);
+check(msg, String); 
+check(scheduledAt, Date);
+
+if (scheduledAt <= new Date()) {
+  throw new Meteor.Error('invalid-time', 'Scheduled time must be in the future');
+}
+
+return Messages.insert({
+  rid: roomId,
+  msg,
+  scheduledAt,
+  isScheduled: true,
+  status: 'pending',
+  createdAt: new Date(),
+  u: Meteor.user()
+});
+
+} });
+
+// === Scheduler Job ===
+
+// server/jobs/scheduler.js 
+import { Messages } from '/imports/api/messages';
+
+Meteor.setInterval(async () => { 
+const now = new Date(); 
+const scheduledMessages = await Messages.find({ isScheduled: true, scheduledAt: { $lte: now }, status: 'pending' }).fetch();
+
+scheduledMessages.forEach((msg) => { 
+// Simulate sending message (here you’d integrate with actual message sending logic)
+console.log('Sending scheduled message:', msg.msg);
+
+Messages.update({ _id: msg._id }, {
+  $set: {
+    status: 'sent',
+    sentAt: new Date()
+  }
+});
+
+}); }, 60 * 1000); // Every 1 minute
+
